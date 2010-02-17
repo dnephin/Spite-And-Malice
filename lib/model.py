@@ -34,7 +34,8 @@ class SpiteAndMaliceModel(object):
 			player[PAY_OFF] = Pile(all_cards.draw(num=20))
 			player[PAY_OFF].flip()
 			# deal 5 cards to each players hard
-			player[HAND] = all_cards.draw(num=5)
+			player[HAND] = Pile(all_cards.draw(num=5))
+			player[HAND].flip(all=True)
 			# four discard stacks
 			player[DISCARD] = []
 			for i in range(self.NUM_STACKS):
@@ -118,16 +119,22 @@ class SpiteAndMaliceModel(object):
 		if to_location[0] == CENTER and not self.can_place_card_in_center(to_location[1], card):
 			raise InvalidMove("Can not place card(%s) on center stack %s." % (card, to_location[1]))
 		
+		# remove it from old location
 		player = self.players[self.current_player]
 		if from_location[0] == HAND and card in player[HAND]:
-			pass
-		elif from_location[0] == DISCARD:
-			pass
-		elif from_location[0] == PAY_OFF:
-			pass
+			player[HAND].remove(card)
+		elif from_location[0] == DISCARD and card in player[DISCARD][from_location[1]]:
+			player[DISCARD][from_location[1]].remove(card)
+		elif from_location[0] == PAY_OFF and card == player[PAY_OFF][-1]:
+			player[PAY_OFF].pop()
 		else:
 			raise InvalidMove("Could not find card(%s) in %s." % (card, from_location))
 
+		# place it in new location
+		if to_location[0] == CENTER:
+			self.center_stacks[to_location[1]].append(card)
+		elif to_location[0] == DISCARD:
+			player[DISCARD][to_location[1]].append(card)
 
 
 	def mix_into_stock(self):
@@ -141,22 +148,8 @@ class SpiteAndMaliceModel(object):
 				self.stock.add_cards(pile.draw(num=12), cards_to=Pile.BOTTOM)
 
 
-class Player(object):
-	" interface definition for a player of Spite and Malice "
-	
-	def play_card(self, my_cards, opponents_cards, center_stacks):
-		"""
-		This method is called when it is time for the player to place a card.
-		The player is given the two maps and a list of center stacks. The first map,
-		my_cards, which includes: cards in their hand, the top card on their payoff
-		stack, and their discard piles. The second map, opponents_cards, includes:
-		the top card of the opponents payoff stack, and their discard piles. 
-
-		The player should return a tuple of, the card they wish to play, the current location
-		of the card, and the desired location of the card.
-		"""
-		pass
-
-
+	def is_won(self):
+		" Check if the game has been won "
+		return (len(self.players[self.active_player][PAY_OFF]) == 0)
 
 
