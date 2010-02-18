@@ -2,8 +2,8 @@
  Controller for the game Spite and Malice.
 """
 
-from models import SpiteAndMaliceModle, InvalidMode, DISCARD, PAY_OFF
-from view import ConsoleView
+from model import SpiteAndMaliceModel, InvalidMove, DISCARD, PAY_OFF
+from view import GameView 
 from cardmodels import Suits, Card
 
 
@@ -12,13 +12,13 @@ class SpiteAndMalice(object):
 
 	def __init__(self):
 		self.model = SpiteAndMaliceModel()
-		self.view = ConsoleView(self.model)
+		self.view = GameView(self.model)
 
 	def run(self):
 		" Lets go. "
 		# find out which player goes first
-		if Card.to_numeric_value(self.model.player[0][PAY_OFF][-1]) > \
-				Card.to_numeric_value(self.model.player[1][PAY_OFF][-1]):
+		if Card.to_numeric_value(self.model.players[0][PAY_OFF][-1]) > \
+				Card.to_numeric_value(self.model.players[1][PAY_OFF][-1]):
 			self.model.active_player = 0
 		else:
 			self.model.active_player = 1
@@ -26,11 +26,16 @@ class SpiteAndMalice(object):
 		while True:
 			# get the next move
 			placement_tuple = self.view.get_move()
+			if placement_tuple == None:
+				return
 			# play the move
 			try:
 				self.model.place_card(*placement_tuple)
-			except InvalidMode, inv:
+			except InvalidMove, inv:
 				self.view.show_error(inv)
+				continue
+			except TypeError, err:
+				print "Unexpected return from view: %s" % (str(placement_tuple))
 				continue
 			# check for win
 			if self.model.is_won():

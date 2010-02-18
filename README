@@ -1,0 +1,9 @@
+Spite and Malice
+
+
+__Requirements__
+pygame 1.8.1 (or later)
+cardmodels (from dnlib)
+
+__Credit__
+Card view models (modified) from DeckOfCards on pygame by John Eriksson (wmjoers)
