@@ -20,6 +20,7 @@ class InvalidMove(ValueError):
 class SpiteAndMaliceModel(object):
 
 	NUM_STACKS = 4
+	HAND_SIZE = 5
 
 	def __init__(self):
 		" Initialize the game to a starting state "
@@ -34,7 +35,7 @@ class SpiteAndMaliceModel(object):
 			player[PAY_OFF] = Pile(all_cards.draw(num=20))
 			player[PAY_OFF].flip()
 			# deal 5 cards to each players hard
-			player[HAND] = Pile(all_cards.draw(num=5))
+			player[HAND] = Pile(all_cards.draw(num=self.HAND_SIZE))
 			player[HAND].flip(all=True)
 			# four discard stacks
 			player[DISCARD] = []
@@ -112,21 +113,32 @@ class SpiteAndMaliceModel(object):
 		if not Card.is_valid(card):
 			raise InvalidMove("Unknown card %s." % (card))
 		if len(from_location) != 2 or from_location[0] not in (HAND, DISCARD, PAY_OFF):
-			raise InvalidMove("from_location of incorrect size or location: %s." % (from_location))
+			raise InvalidMove("from_location of incorrect size or location: %s size %s." % (from_location, len(from_location)))
 		if len(to_location) != 2 or to_location[0] not in (DISCARD, CENTER) or \
 				to_location[1] < 0 or to_location[1] >= self.NUM_STACKS:
 			raise InvalidMove("to_location of incorrect size or location: %s." % (to_location))
 		if to_location[0] == CENTER and not self.can_place_card_in_center(to_location[1], card):
 			raise InvalidMove("Can not place card(%s) on center stack %s." % (card, to_location[1]))
 		
+		# can not discard kings
+		if card[0] == 'K' and to_location[0] == DISCARD:
+			raise InvalidMove("Can not DISCARD card(%s)" % (card))
+
+		# can not move from discard to discard
+		if to_location[0] == from_location[0]:
+			raise InvalidMove("Can not move to same pile %s" % to_location[0])
+
 		# remove it from old location
-		player = self.players[self.current_player]
+		player = self.players[self.active_player]
 		if from_location[0] == HAND and card in player[HAND]:
 			player[HAND].remove(card)
 		elif from_location[0] == DISCARD and card in player[DISCARD][from_location[1]]:
 			player[DISCARD][from_location[1]].remove(card)
 		elif from_location[0] == PAY_OFF and card == player[PAY_OFF][-1]:
-			player[PAY_OFF].pop()
+			if to_location[0] != CENTER:
+				raise InvalidMove("Can not move PAY_OFF to %s" % to_location)
+			else:
+				player[PAY_OFF].pop()
 		else:
 			raise InvalidMove("Could not find card(%s) in %s." % (card, from_location))
 
@@ -147,6 +159,12 @@ class SpiteAndMaliceModel(object):
 				pile.shuffle()
 				self.stock.add_cards(pile.draw(num=12), cards_to=Pile.BOTTOM)
 
+
+	def fill_hand(self):
+		" Fill the active players hand "
+		hand = self.players[self.active_player][HAND]
+		num_cards = self.HAND_SIZE - len(hand)
+		hand.add_cards(self.stock.draw(num=num_cards))
 
 	def is_won(self):
 		" Check if the game has been won "

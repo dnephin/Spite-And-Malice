@@ -29,41 +29,48 @@ class Player(object):
 class HumanPlayer(Player):
 	" A human player "
 
-	def __init__(self):
-		pass
+	def __init__(self, view):
+		self.view = view
 
 	def play_card(self, my_cards, opponents_cards, center_stacks):
+		card_selected = False
 		# wait for move selection
 		while True:
 			for event in pygame.event.get():
-				if event.type == QUIT:
+				# quit
+				if event.type == QUIT or event.type == KEYDOWN and event.key == K_ESCAPE:
 					return None
-				elif event.type == MOUSEBUTTONDOWN:
-					pass
-		return (0,0,0)
+				# mouseclick to select target 
+				if event.type == MOUSEBUTTONUP and card_selected:
+					if self.view.target_group.findClick(event):
+						print "Selected %s, %s" % self.view.target_group.getSelected()
+						card, from_location = self.view.select_group.getSelected()
+						to_location = self.view.target_group.getSelected()[1]
+						return (card.model, from_location, to_location)
+
+				# mouseclick to select card
+				if event.type == MOUSEBUTTONUP:
+					if self.view.select_group.findClick(event):
+						card_selected = True
+						print "Targeted %s, %s, " % self.view.select_group.getSelected()
+						continue
+
 
 
 class GameView(object):
 
-	window_size = (800,600)
+	window_size = (650,600)
 
 	def __init__(self, model):
 		# setup pygame 
 		pygame.init()
-		screen = pygame.display.set_mode(GameView.window_size)
+		self.screen = pygame.display.set_mode(GameView.window_size)
 		pygame.display.set_caption('Spite and Malice!')
-		
-		background = pygame.Surface(screen.get_size()).convert()
-		background.fill((80, 120, 80))
-
-		screen.blit(background, (0,0))
-		pygame.display.flip()
-		self.screen = screen
-		self.background = background
+		self.background = pygame.Surface(self.screen.get_size()).convert()
 
 		# store model and players
 		self.model = model
-		self.players = [HumanPlayer(), HumanPlayer()]
+		self.players = [HumanPlayer(self), HumanPlayer(self)]
 
 
 	def get_move(self):
@@ -72,6 +79,7 @@ class GameView(object):
 		self.select_group = CardGroup()
 		self.target_group = CardGroup()
 		# place the cards
+		self.background.fill((80, 120, 80))
 		self._draw_board()
 
 		# refresh the view
@@ -92,54 +100,75 @@ class GameView(object):
 
 	def _draw_board(self):
 		" place the cards on the screen "
+		# group for cards that can not be selected
+		other_group = CardGroup()
 		# defines for placement
 		card_width = 75
 		card_height = 100
 		card_layer_x = 25
 		card_layer_y = 20
+		discard_left_x = 40 + card_width * 4
 		center = self.background.get_rect().centery
 
 		# place center stacks
 		for i in range(len(self.model.center_stacks)):
 			pile = self.model.center_stacks[i]
 			if len(pile) < 1:
-				card = self.target_group.makeBlank()
+				card = self.target_group.makeBlank((CENTER, i))
 			else:
-				card = self.target_group.makeCard(pile[-1])
-			self.background.blit(card, card.get_rect(centery=center, x=10 + card_width * i))
+				card = self.target_group.makeCard(pile[-1], (CENTER, i))
+			card.place(self.background, card.get_rect(centery=center, x=10 + card_width * i))
+		# place hand
+		player = self.model.players[self.model.active_player]
+		for i in range(len(player[HAND])):
+			card = self.select_group.makeCard(player[HAND][i], (HAND,None))
+			card.place(self.background, card.get_rect(x=10 + card_layer_x * i, 
+					y=self.background.get_rect().bottom - card_height))
+		#TODO: fliped over opponnts hand
+
+		# place pay-off
+		card = self.select_group.makeCard(player[PAY_OFF][-1], (PAY_OFF,None))
+		card.place(self.background, card.get_rect(x=10, 
+				centery=int(self.background.get_rect().height * 0.73)))
+		card = other_group.makeCard(self.model.players[int(not self.model.active_player)][PAY_OFF][-1],
+				None)
+		card.place(self.background, card.get_rect(x=10, 
+				centery=int(self.background.get_rect().height * 0.28)))
+
+		# place player discard piles
+		for pile_num in range(self.model.NUM_STACKS):
+			for n in range(len(player[DISCARD][pile_num])):
+				card = other_group.makeCard(player[DISCARD][pile_num][n], None)
+				card.place(self.background, card.get_rect(
+						top=20 + center + n * card_layer_y, x=discard_left_x + pile_num * card_width))
+				if n == len(player[DISCARD][pile_num])-1:
+					self.target_group.addCard(card, (DISCARD, pile_num))
+					self.select_group.addCard(card, (DISCARD, pile_num))
+			if not len(player[DISCARD][pile_num]):
+				card = self.target_group.makeBlank((DISCARD, pile_num))
+				card.place(self.background, card.get_rect(
+						top=20 + center, x=discard_left_x + pile_num * card_width))
+
+		# place opponents discard piles
+		opponent = self.model.players[int(not self.model.active_player)]
+		for pile_num in range(self.model.NUM_STACKS):
+			for n in range(len(opponent[DISCARD][pile_num])):
+				card = other_group.makeCard(opponent[DISCARD][pile_num][n], None)
+				card.place(self.background, card.get_rect(
+						bottom= center - 20 - n * card_layer_y, x=discard_left_x + pile_num * card_width))
+			if not len(opponent[DISCARD][pile_num]):
+				card = other_group.makeBlank(None)
+				card.place(self.background, card.get_rect(
+						bottom= -20 + center, x=discard_left_x + pile_num * card_width))
 
 		# TODO: player text
 		# print the players number of screen
 		#text = self._build_text("Player %d" % (self.model.active_player + 1))
-		#self.background.blit(card, rect)
-
-		# place hand
-		player = self.model.players[self.model.active_player]
-		for i in range(len(player[HAND])):
-			card = self.select_group.makeCard(player[HAND][i])
-			self.background.blit(card, card.get_rect(x=10 + card_layer_x * i, 
-					y=self.background.get_rect().bottom - card_height))
-		# place pay-off
-		card = self.select_group.makeCard(player[PAY_OFF][-1])
-		self.background.blit(card, card.get_rect(x=10, 
-				centery=int(self.background.get_rect().height * 0.73)))
-		card = self.select_group.makeCard(self.model.players[int(not self.model.active_player)][PAY_OFF][-1])
-		self.background.blit(card, card.get_rect(x=10, 
-				centery=int(self.background.get_rect().height * 0.28)))
+		#card.place(self.background, rect)
 
 
-
-
-
-	# then place the cards
-
-		
-
-
-
-
-	def show_error(self):
-		pass
+	def show_error(self, message):
+		print message
 	
 
 	def game_over(self):

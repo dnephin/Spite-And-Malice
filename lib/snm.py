@@ -2,7 +2,7 @@
  Controller for the game Spite and Malice.
 """
 
-from model import SpiteAndMaliceModel, InvalidMove, DISCARD, PAY_OFF
+from model import SpiteAndMaliceModel, InvalidMove, DISCARD, PAY_OFF, HAND
 from view import GameView 
 from cardmodels import Suits, Card
 
@@ -42,10 +42,18 @@ class SpiteAndMalice(object):
 				self.view.game_over()
 				return
 			# mix completed stacks back in
-			self.model.mix_into_stack()
+			self.model.mix_into_stock()
+
+			# fill player hand if empty, and not a discard
+			hand = self.model.players[self.model.active_player][HAND]
+			if placement_tuple[2][0] != DISCARD and len(hand) == 0:
+				self.model.fill_hand()
+
 			# swap players if move was a discard
-			if placement_tuple[3][1] == DISCARD:
+			if placement_tuple[2][0] == DISCARD:
 				self.model.active_player = int(not self.model.active_player)
+				# fill next players hand
+				self.model.fill_hand()
 
 
 
