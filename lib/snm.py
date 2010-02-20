@@ -5,6 +5,10 @@
 from model import SpiteAndMaliceModel, InvalidMove, DISCARD, PAY_OFF, HAND
 from view import GameView 
 from cardmodels import Suits, Card
+import logging
+import logging.config
+
+log = logging.getLogger('snm.controller')
 
 
 class SpiteAndMalice(object):
@@ -35,7 +39,7 @@ class SpiteAndMalice(object):
 				self.view.show_error(inv)
 				continue
 			except TypeError, err:
-				print "Unexpected return from view: %s" % (str(placement_tuple))
+				log.warn("Unexpected return from view: %s" % (str(placement_tuple)))
 				continue
 			# check for win
 			if self.model.is_won():
@@ -58,6 +62,7 @@ class SpiteAndMalice(object):
 
 
 if __name__ == "__main__":
+	logging.config.fileConfig('./conf/logging.conf')
 	game = SpiteAndMalice()
 	game.run()
 

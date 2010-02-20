@@ -5,10 +5,13 @@
 import pygame 
 from pygame.locals import *
 from cardmodels import Suits, Card
+import logging
+
+log = logging.getLogger('snm.cardview')
 							 
 
 class CardView(object):
-	
+	" The visual representation of a card "
 	def __init__(self, img_surface, model):
 		self.surface = img_surface
 		self.loc = img_surface.get_rect()
@@ -89,7 +92,7 @@ class CardGroup(list):
 		" Find if the click was on a card in this CardGroup "
 		for index in range(len(self)-1,-1,-1):
 			rect = self[index][0].loc
-			print "index[%s] card(%s) mouse(%s,%s)" % (index, rect, event.pos[0], event.pos[1])
+			log.debug("index[%s] card(%s) mouse(%s,%s)" % (index, rect, event.pos[0], event.pos[1]))
 			if rect.collidepoint(event.pos[0], event.pos[1]):
 			 	self.selected_id = index
 				return True

@@ -7,6 +7,11 @@ from pygame.locals import *
 from player import ConsolePlayer
 from cardView import CardImages, CardGroup
 from model import *
+import logging
+
+log = logging.getLogger('snm.view')
+
+# TODO: highlight selected card
 
 
 class Player(object):
@@ -25,14 +30,37 @@ class Player(object):
 		"""
 		pass
 
+	def show_error(self, message):
+		log.warn(message)
+	
+	def inform_game_over(self):
+		log.warn("Game Over! Player %d won" % (self.model.active_player+1))
+
+
 
 class HumanPlayer(Player):
-	" A human player "
+	" A human players interface to the game "
 
-	def __init__(self, view):
-		self.view = view
+	screen = None
+	window_size = (650,600)
+
+	def __init__(self, model):
+		# setup pygame 
+		if not self.screen:
+			pygame.init()
+			self.screen = pygame.display.set_mode(HumanPlayer.window_size)
+			pygame.display.set_caption('Spite and Malice!')
+
+		self.background = pygame.Surface(self.screen.get_size()).convert()
+		self.model = model
 
 	def play_card(self, my_cards, opponents_cards, center_stacks):
+		# make card group for cards in the deck
+		self.select_group = CardGroup()
+		self.target_group = CardGroup()
+		# place the cards
+		self._draw_board()
+
 		card_selected = False
 		# wait for move selection
 		while True:
@@ -42,53 +70,18 @@ class HumanPlayer(Player):
 					return None
 				# mouseclick to select target 
 				if event.type == MOUSEBUTTONUP and card_selected:
-					if self.view.target_group.findClick(event):
-						print "Selected %s, %s" % self.view.target_group.getSelected()
-						card, from_location = self.view.select_group.getSelected()
-						to_location = self.view.target_group.getSelected()[1]
+					if self.target_group.findClick(event):
+						log.info("Selected %s, %s" % self.target_group.getSelected())
+						card, from_location = self.select_group.getSelected()
+						to_location = self.target_group.getSelected()[1]
 						return (card.model, from_location, to_location)
 
 				# mouseclick to select card
 				if event.type == MOUSEBUTTONUP:
-					if self.view.select_group.findClick(event):
+					if self.select_group.findClick(event):
 						card_selected = True
-						print "Targeted %s, %s, " % self.view.select_group.getSelected()
+						log.info("Targeted %s, %s, " % self.select_group.getSelected())
 						continue
-
-
-
-class GameView(object):
-
-	window_size = (650,600)
-
-	def __init__(self, model):
-		# setup pygame 
-		pygame.init()
-		self.screen = pygame.display.set_mode(GameView.window_size)
-		pygame.display.set_caption('Spite and Malice!')
-		self.background = pygame.Surface(self.screen.get_size()).convert()
-
-		# store model and players
-		self.model = model
-		self.players = [HumanPlayer(self), HumanPlayer(self)]
-
-
-	def get_move(self):
-		" Get a move from the player "
-		# make card group for cards in the deck
-		self.select_group = CardGroup()
-		self.target_group = CardGroup()
-		# place the cards
-		self.background.fill((80, 120, 80))
-		self._draw_board()
-
-		# refresh the view
-		self.screen.blit(self.background, (0,0))
-		pygame.display.flip()
-
-		# get move from player
-		current_view = self.model.build_view_for_player()
-		return self.players[self.model.active_player].play_card(*current_view)
 
 
 
@@ -102,14 +95,17 @@ class GameView(object):
 		" place the cards on the screen "
 		# group for cards that can not be selected
 		other_group = CardGroup()
+		background = self.background
 		# defines for placement
 		card_width = 75
 		card_height = 100
 		card_layer_x = 25
 		card_layer_y = 20
 		discard_left_x = 40 + card_width * 4
-		center = self.background.get_rect().centery
+		center = background.get_rect().centery
 
+		# clear the background
+		background.fill((80, 120, 80))
 		# place center stacks
 		for i in range(len(self.model.center_stacks)):
 			pile = self.model.center_stacks[i]
@@ -117,36 +113,43 @@ class GameView(object):
 				card = self.target_group.makeBlank((CENTER, i))
 			else:
 				card = self.target_group.makeCard(pile[-1], (CENTER, i))
-			card.place(self.background, card.get_rect(centery=center, x=10 + card_width * i))
+			card.place(background, card.get_rect(centery=center, x=10 + card_width * i))
+			# put a number on kings
+			if card.model and card.model[0] == 'K':
+				font = pygame.font.Font(None, 25)
+				text = str(Card.values[len(pile)-1])
+				surf = font.render(text, True, (50, 50, 120), (0xFF, 0xFF, 0xFF))
+				background.blit(surf, surf.get_rect(left=card.loc.left+2, top=card.loc.top+2))
+				
 		# place hand
 		player = self.model.players[self.model.active_player]
 		for i in range(len(player[HAND])):
 			card = self.select_group.makeCard(player[HAND][i], (HAND,None))
-			card.place(self.background, card.get_rect(x=10 + card_layer_x * i, 
-					y=self.background.get_rect().bottom - card_height))
+			card.place(background, card.get_rect(x=10 + card_layer_x * i, 
+					y=background.get_rect().bottom - card_height))
 		#TODO: fliped over opponnts hand
 
 		# place pay-off
 		card = self.select_group.makeCard(player[PAY_OFF][-1], (PAY_OFF,None))
-		card.place(self.background, card.get_rect(x=10, 
-				centery=int(self.background.get_rect().height * 0.73)))
+		card.place(background, card.get_rect(x=10, 
+				centery=int(background.get_rect().height * 0.73)))
 		card = other_group.makeCard(self.model.players[int(not self.model.active_player)][PAY_OFF][-1],
 				None)
-		card.place(self.background, card.get_rect(x=10, 
-				centery=int(self.background.get_rect().height * 0.28)))
+		card.place(background, card.get_rect(x=10, 
+				centery=int(background.get_rect().height * 0.28)))
 
 		# place player discard piles
 		for pile_num in range(self.model.NUM_STACKS):
 			for n in range(len(player[DISCARD][pile_num])):
 				card = other_group.makeCard(player[DISCARD][pile_num][n], None)
-				card.place(self.background, card.get_rect(
+				card.place(background, card.get_rect(
 						top=20 + center + n * card_layer_y, x=discard_left_x + pile_num * card_width))
 				if n == len(player[DISCARD][pile_num])-1:
 					self.target_group.addCard(card, (DISCARD, pile_num))
 					self.select_group.addCard(card, (DISCARD, pile_num))
 			if not len(player[DISCARD][pile_num]):
 				card = self.target_group.makeBlank((DISCARD, pile_num))
-				card.place(self.background, card.get_rect(
+				card.place(background, card.get_rect(
 						top=20 + center, x=discard_left_x + pile_num * card_width))
 
 		# place opponents discard piles
@@ -154,22 +157,62 @@ class GameView(object):
 		for pile_num in range(self.model.NUM_STACKS):
 			for n in range(len(opponent[DISCARD][pile_num])):
 				card = other_group.makeCard(opponent[DISCARD][pile_num][n], None)
-				card.place(self.background, card.get_rect(
+				card.place(background, card.get_rect(
 						bottom= center - 20 - n * card_layer_y, x=discard_left_x + pile_num * card_width))
 			if not len(opponent[DISCARD][pile_num]):
 				card = other_group.makeBlank(None)
-				card.place(self.background, card.get_rect(
+				card.place(background, card.get_rect(
 						bottom= -20 + center, x=discard_left_x + pile_num * card_width))
 
 		# TODO: player text
 		# print the players number of screen
 		#text = self._build_text("Player %d" % (self.model.active_player + 1))
-		#card.place(self.background, rect)
+		#card.place(background, rect)
+
+		self._refresh_view()
+
+
+	def _refresh_view(self):
+		" refresh the view "
+		self.screen.blit(self.background, (0,0))
+		pygame.display.flip()
 
 
 	def show_error(self, message):
+		# TODO:
+		log.warn(message)
 		print message
 	
 
+	def inform_game_over(self):
+		log.warn("Game Over! Player %d won" % (self.model.active_player+1))
+		print "Game Over! Player %d won" % (self.model.active_player+1)
+		while True:
+			for event in pygame.event.get():
+				# quit
+				if event.type == QUIT or event.type == KEYDOWN and event.key == K_ESCAPE:
+					return None
+
+
+class GameView(object):
+
+	def __init__(self, model):
+		# store model and players
+		self.model = model
+		self.players = [HumanPlayer(self.model), HumanPlayer(self.model)]
+
+	def get_move(self):
+		" Get a move from the player "
+		current_view = self.model.build_view_for_player()
+		return self.players[self.model.active_player].play_card(*current_view)
+
+
 	def game_over(self):
-		pass
+		" Inform the players the game is over "
+		for player in self.players:
+			player.inform_game_over()
+
+
+	def show_error(self, message):
+		" Report the error to the user "
+		self.players[self.model.active_player].show_error(message)

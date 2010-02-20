@@ -5,6 +5,9 @@
 
 from cardmodels import Deck, Pile, Card
 from copy import deepcopy
+import logging
+
+log = logging.getLogger('snm.model')
 
 PAY_OFF = 'pay_off'
 HAND = 'hand'
