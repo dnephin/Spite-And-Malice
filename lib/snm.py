@@ -7,6 +7,7 @@ from view import GameView
 from cardmodels import Suits, Card
 import logging
 import logging.config
+import time
 
 log = logging.getLogger('snm.controller')
 
@@ -55,10 +56,9 @@ class SpiteAndMalice(object):
 
 			# swap players if move was a discard
 			if placement_tuple[2][0] == DISCARD:
-				self.model.active_player = int(not self.model.active_player)
-				# fill next players hand
-				self.model.fill_hand()
-
+				# tell view and model to end the round
+				self.view.end_turn()
+				self.model.swap_players()
 
 
 if __name__ == "__main__":

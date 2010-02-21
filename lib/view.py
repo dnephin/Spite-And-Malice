@@ -37,12 +37,17 @@ class Player(object):
 		log.warn("Game Over! Player %d won" % (self.model.active_player+1))
 
 
+#TODO remote player
+class RemotePlayer(Player):
+	pass
+
 
 class HumanPlayer(Player):
 	" A human players interface to the game "
 
 	screen = None
 	window_size = (650,600)
+	STD_FONT = './media/FreeSans.ttf'
 
 	def __init__(self, model):
 		# setup pygame 
@@ -85,6 +90,7 @@ class HumanPlayer(Player):
 
 
 
+
 	def _build_text(self, text, loc):
 		" Add text to the screen "
 		font = pygame.font.Font("./media/FreeSans.ttf", 18)
@@ -116,7 +122,7 @@ class HumanPlayer(Player):
 			card.place(background, card.get_rect(centery=center, x=10 + card_width * i))
 			# put a number on kings
 			if card.model and card.model[0] == 'K':
-				font = pygame.font.Font(None, 25)
+				font = pygame.font.Font(self.STD_FONT, 20)
 				text = str(Card.values[len(pile)-1])
 				surf = font.render(text, True, (50, 50, 120), (0xFF, 0xFF, 0xFF))
 				background.blit(surf, surf.get_rect(left=card.loc.left+2, top=card.loc.top+2))
@@ -127,7 +133,6 @@ class HumanPlayer(Player):
 			card = self.select_group.makeCard(player[HAND][i], (HAND,None))
 			card.place(background, card.get_rect(x=10 + card_layer_x * i, 
 					y=background.get_rect().bottom - card_height))
-		#TODO: fliped over opponnts hand
 
 		# place pay-off
 		card = self.select_group.makeCard(player[PAY_OFF][-1], (PAY_OFF,None))
@@ -164,9 +169,17 @@ class HumanPlayer(Player):
 				card.place(background, card.get_rect(
 						bottom= -20 + center, x=discard_left_x + pile_num * card_width))
 
-		# TODO: player text
-		# print the players number of screen
-		#text = self._build_text("Player %d" % (self.model.active_player + 1))
+		# fliped over opponnts hand
+		for i in range(len(opponent[HAND])):
+			card = other_group.makeBack(None)
+			card.place(background, card.get_rect(x=10 + card_layer_x * i,
+					top=background.get_rect().top + 2))
+
+		# player text
+		font = pygame.font.Font(self.STD_FONT, 25)
+		text = "Player %d" % (self.model.active_player + 1)
+		surf = font.render(text, True, (30, 30, 80))
+		background.blit(surf, surf.get_rect(left=10, top=center + card_height / 2 + 10))
 		#card.place(background, rect)
 
 		self._refresh_view()
@@ -183,7 +196,6 @@ class HumanPlayer(Player):
 		log.warn(message)
 		print message
 	
-
 	def inform_game_over(self):
 		log.warn("Game Over! Player %d won" % (self.model.active_player+1))
 		print "Game Over! Player %d won" % (self.model.active_player+1)
@@ -192,6 +204,15 @@ class HumanPlayer(Player):
 				# quit
 				if event.type == QUIT or event.type == KEYDOWN and event.key == K_ESCAPE:
 					return None
+
+	def end_turn(self):
+		" Blank the screen until a click happens "
+		self.background.fill((30, 30, 30))
+		self._refresh_view()
+		while True:
+			for event in pygame.event.get():
+				if event.type == MOUSEBUTTONUP or event.type == KEYUP:
+					return
 
 
 class GameView(object):
@@ -206,6 +227,9 @@ class GameView(object):
 		current_view = self.model.build_view_for_player()
 		return self.players[self.model.active_player].play_card(*current_view)
 
+	def end_turn(self):
+		" End the turn for the current player "
+		self.players[self.model.active_player].end_turn()
 
 	def game_over(self):
 		" Inform the players the game is over "

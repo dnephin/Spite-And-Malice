@@ -58,6 +58,11 @@ class SpiteAndMaliceModel(object):
 			self.center_stacks.append(pile)
 
 
+	def swap_players(self):
+		" Change the active players "
+		self.active_player = int(not self.active_player)
+		self.fill_hand()
+
 	def build_view_for_player(self):
 		" Return a copy of the current view of the board for the player. "
 		player_id = self.active_player
