@@ -20,6 +20,43 @@ class InvalidMove(ValueError):
 	pass
 
 
+class PlayerMove(object):
+	" A data transfer object for plaers moves. "
+	def __init__(self, card, from_location=None, to_location=None,
+			from_pile=None, from_id=None, to_pile=None, to_id=None):
+		self.card = card
+		# set from 
+		if from_location and len(from_location) == 2:
+			self.from_pile = from_location[0]
+			self.from_id = from_location[1]
+		elif from_pile:
+			self.from_pile = from_pile
+			self.from_id = from_id
+		else:
+			raise InvalidMove("Could not find a from location.")
+
+		# set to
+		if to_location and len(to_location) == 2:
+			self.to_pile = to_location[0]
+			self.to_id = to_location[1]
+		elif to_pile and to_id != None:
+			self.to_pile = to_pile
+			self.to_id = to_id
+		else:
+			raise InvalidMove("Could not find a to location.")
+
+	def __str__(self):
+		" String representation of this dto "
+		from_id = self.from_id
+		to_id = self.to_id
+		if self.from_id == None:
+			from_id = ''
+		if self.to_id == None:
+			to_id = ''
+		return "Player Moved: [%s] from '%s %s' to '%s %s'" % (self.card, self.from_pile,
+				from_id, self.to_pile, to_id)
+
+
 class SpiteAndMaliceModel(object):
 
 	NUM_STACKS = 4
@@ -79,14 +116,7 @@ class SpiteAndMaliceModel(object):
 			PAY_OFF: opponent[PAY_OFF].visible()[-1],
 			DISCARD: deepcopy(opponent[DISCARD])
 			}
-		# the top card from the center stacks
-		center_stacks = []
-		for pile in self.center_stacks:
-			if len(pile) > 0:
-				center_stacks.append(pile.visible()[-1])
-			else:
-				center_stacks.append(None)
-		return (player_cards, opponent_cards, center_stacks)
+		return (player_cards, opponent_cards, deepcopy(self.center_stacks))
 
 
 	def can_place_card_in_center(self, center_id, card):
@@ -109,7 +139,7 @@ class SpiteAndMaliceModel(object):
 		return (value - top_value == 1)
 
 
-	def place_card(self, card, from_location, to_location):
+	def place_card(self, player_move):
 		"""
 		Place a card onto a stack. Inputs are:
 		card is the card to be placed
@@ -118,43 +148,43 @@ class SpiteAndMaliceModel(object):
 
 		Returns the id of the player who gets to play next.
 		"""
+		card = player_move.card
 		if not Card.is_valid(card):
 			raise InvalidMove("Unknown card %s." % (card))
-		if len(from_location) != 2 or from_location[0] not in (HAND, DISCARD, PAY_OFF):
-			raise InvalidMove("from_location of incorrect size or location: %s size %s." % (from_location, len(from_location)))
-		if len(to_location) != 2 or to_location[0] not in (DISCARD, CENTER) or \
-				to_location[1] < 0 or to_location[1] >= self.NUM_STACKS:
-			raise InvalidMove("to_location of incorrect size or location: %s." % (to_location))
-		if to_location[0] == CENTER and not self.can_place_card_in_center(to_location[1], card):
-			raise InvalidMove("Can not place card(%s) on center stack %s." % (card, to_location[1]))
+		if player_move.from_pile not in (HAND, DISCARD, PAY_OFF):
+			raise InvalidMove("from_location incorrect: %s " % (player_move.from_pile))
+		if player_move.to_pile not in (DISCARD, CENTER) or player_move.to_id < 0 or player_move.to_id >= self.NUM_STACKS:
+			raise InvalidMove("to_location incorrect: %s." % (player_move.to_pile))
+		if player_move.to_pile == CENTER and not self.can_place_card_in_center(player_move.to_id, card):
+			raise InvalidMove("Can not place card(%s) on center stack %s." % (card, player_move.to_id))
 		
 		# can not discard kings
-		if card[0] == 'K' and to_location[0] == DISCARD:
+		if card[0] == 'K' and player_move.to_pile == DISCARD:
 			raise InvalidMove("Can not DISCARD card(%s)" % (card))
 
 		# can not move from discard to discard
-		if to_location[0] == from_location[0]:
-			raise InvalidMove("Can not move to same pile %s" % to_location[0])
+		if player_move.to_pile == player_move.from_pile:
+			raise InvalidMove("Can not move to same pile %s" % player_move.to_pile)
 
 		# remove it from old location
 		player = self.players[self.active_player]
-		if from_location[0] == HAND and card in player[HAND]:
+		if player_move.from_pile == HAND and card in player[HAND]:
 			player[HAND].remove(card)
-		elif from_location[0] == DISCARD and card in player[DISCARD][from_location[1]]:
-			player[DISCARD][from_location[1]].remove(card)
-		elif from_location[0] == PAY_OFF and card == player[PAY_OFF][-1]:
-			if to_location[0] != CENTER:
-				raise InvalidMove("Can not move PAY_OFF to %s" % to_location)
+		elif player_move.from_pile == DISCARD and card in player[DISCARD][player_move.from_id]:
+			player[DISCARD][player_move.from_id].remove(card)
+		elif player_move.from_pile == PAY_OFF and card == player[PAY_OFF][-1]:
+			if player_move.to_pile != CENTER:
+				raise InvalidMove("Can not move PAY_OFF to %s" % player_move.to_pile)
 			else:
 				player[PAY_OFF].pop()
 		else:
-			raise InvalidMove("Could not find card(%s) in %s." % (card, from_location))
+			raise InvalidMove("Could not find card(%s) in %s." % (card, player_move.from_pile))
 
 		# place it in new location
-		if to_location[0] == CENTER:
-			self.center_stacks[to_location[1]].append(card)
-		elif to_location[0] == DISCARD:
-			player[DISCARD][to_location[1]].append(card)
+		if player_move.to_pile == CENTER:
+			self.center_stacks[player_move.to_id].append(card)
+		elif player_move.to_pile == DISCARD:
+			player[DISCARD][player_move.to_id].append(card)
 
 
 	def mix_into_stock(self):
