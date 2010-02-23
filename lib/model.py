@@ -56,6 +56,52 @@ class PlayerMove(object):
 		return "Player Moved: [%s] from '%s %s' to '%s %s'" % (self.card, self.from_pile,
 				from_id, self.to_pile, to_id)
 
+	def __eq__(self, other):
+		if other == None or type(other) != PlayerMove:
+			return False
+		if self.from_pile == other.from_pile and \
+				self.from_id == other.from_id and \
+				self.to_pile == other.to_pile and \
+				self.to_id == other.to_id:
+			return True
+		return False
+			return False
+
+	def __ne__(self, other):
+		return not self.__eq__(other)
+		
+
+
+class GameState(SpiteAndMaliceModel):
+	" A copy of the visible game state for a player "
+	def __init__(self, game):
+		self.active_player = game.active_player
+		self.players = [{}, {}]
+
+		# copy of the visible cards for player
+		a_id = self.active_player
+		self.players[a_id][HAND] = deepcopy(game.players[a_id][HAND])
+		self.players[a_id][PAY_OFF] = [game.players[a_id][PAY_OFF].visible()[-1]]
+		self.players[a_id][DISCARD] = deepcopy(game.players[a_id][DISCARD])
+
+		# copy of visible cards of his opponent
+		o_id = int(not a_id)
+		self.players[o_id][PAY_OFF] = [game.players[o_id][PAY_OFF].visible()[-1]]
+		self.players[o_id][DISCARD] = deepcopy(game.players[o_id][DISCARD])
+
+	def __eq__(self, other):
+		if other == None or type(other) != GameState:
+			return False
+		for pile in self.players[0].keys():
+			if self.players[0][pile] != other.players[0][pile]:
+				return False
+		return True
+
+	def __ne__(self, other):
+		return not self.__eq__(other)
+
+	#TODO: make other functions not callable
+
 
 class SpiteAndMaliceModel(object):
 
@@ -100,31 +146,22 @@ class SpiteAndMaliceModel(object):
 		self.active_player = int(not self.active_player)
 		self.fill_hand()
 
+	def get_player(self, active=True):
+		" Return a players cards "
+		if active:
+			return self.players[self.active_player]
+		return self.players[int(not self.active_player]
+
 	def build_view_for_player(self):
-		" Return a copy of the current view of the board for the player. "
-		player_id = self.active_player
-		# copy of the visible cards for player
-		player = self.players[player_id]
-		player_cards = {
-			HAND: deepcopy(player[HAND]),
-			PAY_OFF: player[PAY_OFF].visible()[-1],
-			DISCARD: deepcopy(player[DISCARD])
-			}
-		# copy of visible cards of his opponent
-		opponent = self.players[int(not player_id)]
-		opponent_cards = {
-			PAY_OFF: opponent[PAY_OFF].visible()[-1],
-			DISCARD: deepcopy(opponent[DISCARD])
-			}
-		return (player_cards, opponent_cards, deepcopy(self.center_stacks))
+		" Return a copy of the current view as a GameState object for the player. "
 
 
-	def can_place_card_in_center(self, center_id, card):
+	@classmethod
+	def can_place_card_in_center(cls, pile, card):
 		"""
-		Determins if card can be played on the center stack center_id. 
+		Determins if card can be played on the center stack pile. 
 		Returns true if it can be placed, false otherwise.
 		"""
-		pile = self.center_stacks[center_id]
 		value = card[0]
 		# king can be placed on anything
 		if value == 'K':
@@ -153,9 +190,11 @@ class SpiteAndMaliceModel(object):
 			raise InvalidMove("Unknown card %s." % (card))
 		if player_move.from_pile not in (HAND, DISCARD, PAY_OFF):
 			raise InvalidMove("from_location incorrect: %s " % (player_move.from_pile))
-		if player_move.to_pile not in (DISCARD, CENTER) or player_move.to_id < 0 or player_move.to_id >= self.NUM_STACKS:
+		if player_move.to_pile not in (DISCARD, CENTER) or player_move.to_id < 0 \
+				or player_move.to_id >= self.NUM_STACKS:
 			raise InvalidMove("to_location incorrect: %s." % (player_move.to_pile))
-		if player_move.to_pile == CENTER and not self.can_place_card_in_center(player_move.to_id, card):
+		if player_move.to_pile == CENTER and \
+				not self.can_place_card_in_center(self.center_stacks[player_move.to_id], card):
 			raise InvalidMove("Can not place card(%s) on center stack %s." % (card, player_move.to_id))
 		
 		# can not discard kings

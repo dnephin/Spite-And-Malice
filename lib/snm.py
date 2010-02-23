@@ -53,8 +53,8 @@ class SpiteAndMalice(object):
 				player_move = self.players[active_player].play_card(
 						self.view.select_group, self.view.target_group)
 			else:
-				current_view = self.model.build_view_for_player()
-				player_move = self.players[active_player].play_card(*current_view)
+				game_state = self.model.build_view_for_player()
+				player_move = self.players[active_player].play_card(game_state)
 
 			if player_move == None:
 				return
