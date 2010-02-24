@@ -81,6 +81,7 @@ class SpiteAndMalice(object):
 			if player_move.to_pile == DISCARD:
 				# tell view and model to end the round
 				self.model.swap_players()
+				self.model.fill_hand()
 
 
 if __name__ == "__main__":

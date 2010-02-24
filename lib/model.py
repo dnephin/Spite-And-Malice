@@ -144,11 +144,10 @@ class SpiteAndMaliceModel(object):
 	def swap_players(self):
 		" Change the active players "
 		self.active_player = int(not self.active_player)
-		self.fill_hand()
 
-	def get_player(self, active=True):
+	def get_player(self, other=False):
 		" Return a players cards "
-		if active:
+		if not other:
 			return self.players[self.active_player]
 		return self.players[int(not self.active_player]
 
