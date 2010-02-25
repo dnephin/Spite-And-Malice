@@ -1,4 +1,4 @@
 #!/bin/bash
 
-export PYTHONPATH=~/media/code/dnlib:./lib/DeckOfCards
+export PYTHONPATH=~/media/code/dnlib
 python ./lib/snm.py

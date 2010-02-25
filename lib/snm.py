@@ -7,7 +7,6 @@ from view import GameView
 from cardmodels import Suits, Card
 import logging
 import logging.config
-import time
 from player import HumanPlayer
 from agent import ComputerPlayer
 
@@ -19,7 +18,7 @@ class SpiteAndMalice(object):
 
 	def __init__(self):
 		self.model = SpiteAndMaliceModel()
-		self.players = [HumanPlayer(), HumanPlayer()]
+		self.players = [HumanPlayer(), ComputerPlayer()]
 		self.view = GameView(self.model, self.players)
 
 	def run(self):
@@ -57,6 +56,7 @@ class SpiteAndMalice(object):
 				player_move = self.players[active_player].play_card(game_state)
 
 			if player_move == None:
+				log.warn('Got None move. Ending')
 				return
 
 			# play the move

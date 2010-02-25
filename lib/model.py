@@ -65,42 +65,10 @@ class PlayerMove(object):
 				self.to_id == other.to_id:
 			return True
 		return False
-			return False
 
 	def __ne__(self, other):
 		return not self.__eq__(other)
 		
-
-
-class GameState(SpiteAndMaliceModel):
-	" A copy of the visible game state for a player "
-	def __init__(self, game):
-		self.active_player = game.active_player
-		self.players = [{}, {}]
-
-		# copy of the visible cards for player
-		a_id = self.active_player
-		self.players[a_id][HAND] = deepcopy(game.players[a_id][HAND])
-		self.players[a_id][PAY_OFF] = [game.players[a_id][PAY_OFF].visible()[-1]]
-		self.players[a_id][DISCARD] = deepcopy(game.players[a_id][DISCARD])
-
-		# copy of visible cards of his opponent
-		o_id = int(not a_id)
-		self.players[o_id][PAY_OFF] = [game.players[o_id][PAY_OFF].visible()[-1]]
-		self.players[o_id][DISCARD] = deepcopy(game.players[o_id][DISCARD])
-
-	def __eq__(self, other):
-		if other == None or type(other) != GameState:
-			return False
-		for pile in self.players[0].keys():
-			if self.players[0][pile] != other.players[0][pile]:
-				return False
-		return True
-
-	def __ne__(self, other):
-		return not self.__eq__(other)
-
-	#TODO: make other functions not callable
 
 
 class SpiteAndMaliceModel(object):
@@ -149,10 +117,11 @@ class SpiteAndMaliceModel(object):
 		" Return a players cards "
 		if not other:
 			return self.players[self.active_player]
-		return self.players[int(not self.active_player]
+		return self.players[int(not self.active_player)]
 
 	def build_view_for_player(self):
 		" Return a copy of the current view as a GameState object for the player. "
+		return GameState(self)
 
 
 	@classmethod
@@ -245,5 +214,56 @@ class SpiteAndMaliceModel(object):
 	def is_won(self):
 		" Check if the game has been won "
 		return (len(self.players[self.active_player][PAY_OFF]) == 0)
+
+
+
+class GameState(SpiteAndMaliceModel):
+	" A copy of the visible game state for a player "
+	def __init__(self, game):
+		self.active_player = game.active_player
+		self.players = [{}, {}]
+
+		# copy of the visible cards for player
+		a_id = self.active_player
+		self.players[a_id][HAND] = deepcopy(game.players[a_id][HAND])
+		self.players[a_id][PAY_OFF] = [game.players[a_id][PAY_OFF].visible()[-1]]
+		self.players[a_id][DISCARD] = deepcopy(game.players[a_id][DISCARD])
+
+		# copy of visible cards of his opponent
+		o_id = int(not a_id)
+		self.players[o_id][PAY_OFF] = [game.players[o_id][PAY_OFF].visible()[-1]]
+		self.players[o_id][DISCARD] = deepcopy(game.players[o_id][DISCARD])
+
+		# center stacks
+		self.center_stacks = deepcopy(game.center_stacks)
+
+	def __eq__(self, other):
+		if other == None or type(other) != GameState:
+			return False
+		for pile in self.players[0].keys():
+			if self.players[0][pile] != other.players[0][pile]:
+				return False
+		return True
+
+	def __ne__(self, other):
+		return not self.__eq__(other)
+
+	def __str__(self):
+		s = self.get_player()
+		o = self.get_player(True)
+		sd = []
+		od = []
+		cs = []
+		for p, pd in ((s[DISCARD],sd), (o[DISCARD],od), (self.center_stacks, cs)):
+			for pile in p:
+				if len(pile) > 0:
+					pd.append(pile[-1])
+				else:
+					pd.append('')
+		return "State([%s]hand[%s]disc[%s],[%s]disc[%s],center[%s])" % (
+				s[PAY_OFF][-1], ''.join(s[HAND]), ''.join(sd), o[PAY_OFF][-1], ''.join(od),
+				''.join(cs))
+
+	#TODO: make other functions not callable
 
 

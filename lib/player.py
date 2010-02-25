@@ -13,7 +13,7 @@ log = logging.getLogger('snm.view')
 class Player(object):
 	" interface definition for a player of Spite and Malice "
 	
-	def play_card(self, my_cards, opponents_cards, center_stacks):
+	def play_card(self, *args):
 		"""
 		This method is called when it is time for the player to place a card.
 		The player is given the two maps and a list of center stacks. The first map,
