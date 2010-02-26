@@ -53,8 +53,8 @@ class PlayerMove(object):
 			from_id = ''
 		if self.to_id == None:
 			to_id = ''
-		return "Player Moved: [%s] from '%s %s' to '%s %s'" % (self.card, self.from_pile,
-				from_id, self.to_pile, to_id)
+		return "Move(%s %s[%s] -> %s %s" % (self.from_pile, from_id, self.card,
+				self.to_pile, to_id)
 
 	def __eq__(self, other):
 		if other == None or type(other) != PlayerMove:
@@ -62,7 +62,8 @@ class PlayerMove(object):
 		if self.from_pile == other.from_pile and \
 				self.from_id == other.from_id and \
 				self.to_pile == other.to_pile and \
-				self.to_id == other.to_id:
+				self.to_id == other.to_id and \
+				self.card == other.card:
 			return True
 		return False
 
@@ -240,8 +241,8 @@ class GameState(SpiteAndMaliceModel):
 	def __eq__(self, other):
 		if other == None or type(other) != GameState:
 			return False
-		for pile in self.players[0].keys():
-			if self.players[0][pile] != other.players[0][pile]:
+		for pile in self.get_player().keys():
+			if self.get_player()[pile] != other.get_player()[pile]:
 				return False
 		return True
 
@@ -254,15 +255,23 @@ class GameState(SpiteAndMaliceModel):
 		sd = []
 		od = []
 		cs = []
+		if len(s[PAY_OFF]):
+			s_po = s[PAY_OFF][-1]
+		else:
+			s_po = ''
+		if len(o[PAY_OFF]):
+			o_po = o[PAY_OFF][-1]
+		else:
+			o_po = ''
+
 		for p, pd in ((s[DISCARD],sd), (o[DISCARD],od), (self.center_stacks, cs)):
 			for pile in p:
 				if len(pile) > 0:
 					pd.append(pile[-1])
 				else:
 					pd.append('')
-		return "State([%s]hand[%s]disc[%s],[%s]disc[%s],center[%s])" % (
-				s[PAY_OFF][-1], ''.join(s[HAND]), ''.join(sd), o[PAY_OFF][-1], ''.join(od),
-				''.join(cs))
+		return "State(po[%s]hand[%s]disc[%s],[%s]disc[%s],center[%s])" % (
+				s_po, ''.join(s[HAND]), ''.join(sd), o_po, ''.join(od), ''.join(cs))
 
 	#TODO: make other functions not callable
 

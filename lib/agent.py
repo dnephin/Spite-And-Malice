@@ -31,7 +31,12 @@ class StateNode(object):
 		" Override equality so that we can remove duplicate states. "
 		if other == None or type(other) != StateNode:
 			return False
-		if self.state == other.state and self.action == self.action:
+		if self.state == other.state:
+			log.warn("states equal")
+		if self.action == other.action:
+			log.warn("action %s equal %s " % (self.action, other.action))
+
+		if self.state == other.state and self.action == other.action:
 			return True
 		return False
 
@@ -39,8 +44,8 @@ class StateNode(object):
 		return not self.__eq__(other)
 
 	def __str__(self):
-		return "Node[%d](%s,%s,child_nodes:%d,player:%s)" % (
-				self.util_value, self.state, self.action, len(self.child_nodes), self.player)
+		return "Node[%d](ps:%s|%s,%s,childs:%d)" % (
+				self.util_value, self.player, self.action, self.state, len(self.child_nodes))
 
 
 class ComputerPlayer(Player):
@@ -84,7 +89,7 @@ class ComputerPlayer(Player):
 			node.util_value = self._utility(node)
 
 		if self._terminal_test(node):
-			log.info("Adding terminal state %s" % node)
+			log.info("Adding terminal %s" % node)
 			self.terminal_nodes.append(node)
 			return
 
@@ -100,29 +105,44 @@ class ComputerPlayer(Player):
 		to considerg moves. Calls sucessors to populate the child
 		nodes of the node.
 		"""
+		# TODO: this is broken, returns true too often
+
+		# if nothing was done, can't be a terminal node
+		if not node.action:
+			return False
+
+		# if move is a pay_off, it's a terminal node
+		if node.action.from_pile == PAY_OFF:
+			return True
+
+		# emptied hand without a discard
+		if len(node.state.get_player()[HAND]):
+			return True
+
+		# opponent played a pay_off, doesnt matter what happens after this
+		if node.player == StateNode.OTHER and node.action.from_pile == PAY_OFF:
+			return True
+
 		# follow path and check if any CENTER moves were made 
 		discard_only = True
 		cur_node = node
 		while cur_node:
 			if cur_node.action and cur_node.action.to_pile != DISCARD:
 				discard_only = False
-				log.info("Found a center move in %s" % (cur_node))
+				log.info("Found a center move in chain for %s" % (cur_node))
 				break
 			cur_node = cur_node.parent_node
 
 		# discard is only move
-		if node.action and node.action.to_pile == DISCARD and discard_only:
-			return True
-
-		# emptied hand without a discard
-		if node.action and len(node.state.get_player()[HAND]):
+		if node.action.to_pile == DISCARD and discard_only:
 			return True
 
 		# otherwise generate successors
 		node.child_nodes = self._successors(node)
+		log.info("Found %d succcessor" % len(node.child_nodes))	
 
 		# we've played center cards, so we want to see what the opponent can do
-		if node.action and node.action.to_pile == DISCARD and node.player == StateNode.SELF:
+		if node.action.to_pile == DISCARD and node.player == StateNode.SELF:
 			return False
 
 		# we can't determine any more moves for the other player
@@ -136,11 +156,10 @@ class ComputerPlayer(Player):
 		"""
 		Return a list of successor nodes for the current node. Each node is a valid move.
 		"""
-		log.info("Generating successors for %s" % node)
+		log.debug("Generating successors for %s" % node)
 		node_list = []
-		# moves for the computer player
-		if node.player == StateNode.SELF and (not node.parent_node or \
-				node.parent_node.action.from_pile != DISCARD):
+		# moves for the computer player as long as we didn't discard
+		if node.player == StateNode.SELF and (not(node.action) or node.action.from_pile != DISCARD):
 
 			# moves to center
 			for pile_name, pile_len in [(HAND,1), (PAY_OFF,1), (DISCARD,4)]:
@@ -150,21 +169,24 @@ class ComputerPlayer(Player):
 						new_node = StateNode(new_state, action, node)
 						if new_node not in node_list:
 							node_list.append(new_node)
+						else:
+							log.warn('skip duplicate state %s' % new_node)
 
 			# moves to discard
 			for card in node.state.get_player()[HAND]:
+				# can't discard kings
+				if Card.to_numeric_value(card) == 13:
+					continue
 				for pile_id in range(len(node.state.get_player()[DISCARD])):
-					if Card.to_numeric_value(card) == 13:
-						continue
 					action = PlayerMove(card, from_pile=HAND, to_pile=DISCARD, to_id=pile_id)
 					new_state = ComputerPlayer._new_state_from_action(node.state, action)
 					new_node = StateNode(new_state, action, node)
 					if new_node not in node_list:
 						node_list.append(new_node)
-
+					else:
+						log.warn('skip duplicate state %s' % new_node)
 			return node_list
 	
-		# TODO: assume apponent will always play pay_off if they can, do i need min/max ?
 		# opponent plays card on center
 		for pile_name, pile_len in [(PAY_OFF,1), (DISCARD,4)]:
 			for pile_id in range(pile_len):
@@ -173,7 +195,9 @@ class ComputerPlayer(Player):
 					new_node = StateNode(new_state, action, node)
 					if new_node not in node_list:
 						node_list.append(new_node)
-
+					else:
+						log.warn('skip duplicate state %s' % new_node)
+		return node_list
 
 	@staticmethod
 	def _get_center_move_from(state, pile_name, pile_index, other_player=False):
@@ -191,8 +215,7 @@ class ComputerPlayer(Player):
 		for i in range(len(pile)):
 			card = pile[i]
 			for center_id in range(len(state.center_stacks)):
-				if state.can_place_card_in_center(
-						state.center_stacks[center_id], card):
+				if state.can_place_card_in_center(state.center_stacks[center_id], card):
 					moves.append(PlayerMove(card, from_pile=pile_name, from_id=pile_index,
 							to_pile=CENTER, to_id=center_id))
 		return moves
@@ -207,29 +230,44 @@ class ComputerPlayer(Player):
 		new_state.place_card(action)
 		return new_state
 
+	class PointTracker(dict):
+		"""
+		dictionary wrapper class to keep track of which points are being used 
+		for the final utility value.
+		"""
+		def __init__(self, d):
+			dict.__init__(self, d)
+			self.used = []
+		def __getitem__(self, key):
+			if key not in ['discard_common', 'op_dist_op', 'discard_least', 'card_in_discard']:
+				self.used.append(key)
+			return dict.__getitem__(self, key)
 
 	def _utility(self, node):
 		""" 
 		Calculate the utility value for this state node.
-		Points:
-		+400	Play pay_off card
-		+120	Empty hand without a discard
-		+32		Discard on same value card
-		+10		Each time the discard card occures in the hard
-		+4		Each point away the closest center is from opponents pay off (max +48)
-		+2		Discard buries the least essential card
-		+1		Discard least essential card
-		-3		Each card in hand
-		-80	Opponent plays pay_off card
 		"""
-		# TODO: small value for reducing size of discard, if it does not bring opponent closer
+
+		# TODO: discard values should be less then playing op_dist_po cards
+		# TODO: points for playing on empty discard stack
+		# TODO: organize values into sections (DISCARD, OTHER,  PAYOFF), base points for each
+		points = self.PointTracker({
+			'pay_off': 	400,	# Play pay_off card
+			'empty_hand': 120,	# Empty hand without a discard
+			'discard_same': 32,	# Discard on same value card
+			'discard_common': 10, # Each time the discard card occures in the hard
+			'op_dist_po': 4,	# Each point away the closest center is from opponents pay off (max +48)
+			'bury_least': 2,	# Discard buries the least essential card
+			'discard_least': 1,	# Discard least essential card
+			'card_in_discard': -1, # each card in discard
+			'hand_cards': -3,	# Each card in hand
+			'op_pay_off': -80,	# Opponent plays pay_off card
+		})
+
 		# shortcut vars
 		center_values = []
 		for pile in node.state.center_stacks:
-			if not pile:
-				center_values.append(0)
-				continue
-			center_values.append(Card.to_numeric_value(pile[-1]))
+			center_values.append(len(pile))
 		if node.player == StateNode.SELF:
 			myself = node.state.get_player()
 			other = node.state.get_player(True)
@@ -238,27 +276,26 @@ class ComputerPlayer(Player):
 			other = node.state.get_player()
 
 		value = 0
-		if node.player == StateNode:
+		if node.player == StateNode.SELF:
 			# pay off played
 			if node.action.from_pile == PAY_OFF:
-				value += 400
+				value += points['pay_off']
 			# empty hand without a discard
 			if len(myself[HAND]) == 0 and node.action.to_pile != DISCARD:
-				value += 120
+				value += points['empty_hand']
 			# each time the discard cards value ocurs in the hand
 			if node.action.to_pile == DISCARD:
-				value += 10 * map(lambda c: Card.to_numeric_value(c), myself[HAND]).count(
+				value += points['discard_common'] * map(lambda c: Card.to_numeric_value(c), myself[HAND]).count(
 						Card.to_numeric_value(node.action.card))
 			# discard on same value card
-			if node.action.to_pile == DISCARD and \
-					len(myself[DISCARD][node.action.to_id]) > 1 and \
-					Card.to_numeric_value(myself[DISCARD][node.action.to_id][-1]) == \
+			if node.action.to_pile == DISCARD and len(myself[DISCARD][node.action.to_id]) > 1 \
+					and Card.to_numeric_value(myself[DISCARD][node.action.to_id][-1]) == \
 					Card.to_numeric_value(myself[DISCARD][node.action.to_id][-2]):
-				value += 32
+				value += points['discard_same']
 			# discad buries least essential card
-			elif node.action.to_pile == DISCARD:
+			if node.action.to_pile == DISCARD and len(myself[DISCARD][node.action.to_id]) >= 1:
 				discard_piles = []
-				for pile_id in len(range(myself[DISCARD])):
+				for pile_id in range(len(myself[DISCARD])):
 					pile = myself[DISCARD][pile_id]
 					if len(pile) > 1 and node.action.to_id:
 						discard_piles.append(pile[-2])
@@ -268,25 +305,27 @@ class ComputerPlayer(Player):
 						discard_piles.append(None)
 				if node.action.to_id == self._find_least_essential_card(center_values,
 						discard_piles, myself[PAY_OFF][-1]):
-					value += 2
+					# TODO: broken ? always discards on 0
+					value += points['bury_least']
 			# discard least essential card
 			if node.action.to_pile == DISCARD and 0 == self._find_least_essential_card(
 					center_values, [node.action.card] + myself[HAND], myself[PAY_OFF][-1]):
-				value += 1
-			
+				value += points['discard_least']
 			# each point away the closest center is from opponents pay off
-			value += 4 * self._distance_between_values(self._find_closest_center_stack_value(
-					center_values, other[PAY_OFF][-1]), other[PAY_OFF][-1])
-
+			value += points['op_dist_po'] * self._distance_between_values(self._find_closest_center_stack_value(
+					center_values, other[PAY_OFF][-1]), Card.to_numeric_value(other[PAY_OFF][-1]))
 			# each card in hand
-			value -= 3 * len(myself[HAND])
+			value += points['hand_cards'] * len(myself[HAND])
+			# each card in discard
+			value += points['card_in_discard'] * sum(map(lambda p: len(p), myself[DISCARD]))
 
 		else:
 			# opponent plays pay_off
 			if node.action.from_pile == PAY_OFF:
-				value -= 80
+				value -= points['op_pay_off']
 
 		# cummulative utils
+		log.info("Util %d from: (%s)" % (value, points.used))
 		return value + node.parent_node.util_value
 
 
@@ -296,30 +335,26 @@ class ComputerPlayer(Player):
 		Return the id in pile that is considered least essential relative to the
 		pay off card.
 		"""
+		# TODO: broken, returns cards below value, should return highest outside range from center -> payoff,
+		# for at least the case of discards, maybe this is used correctly elsewhere ?
 		center_value = ComputerPlayer._find_closest_center_stack_value(center_values, pay_off_card)
 		list_values = map(lambda c: ComputerPlayer._distance_between_values(
 				center_value, Card.to_numeric_value(c)), pile)
 
-		return list_values.index(max(list_values))
+		card = pile[list_values.index(max(list_values))]
+		log.info("Least essential card for center_values[%s] and pay_off[%s]: %s" % (
+			"".join(map(str, center_values)), pay_off_card, card))
+		return card
 
 
 	@staticmethod
-	def _find_closest_center_stack_value(center_stacks,  pay_off_card):
+	def _find_closest_center_stack_value(center_values,  pay_off_card):
 		"""
 		return the value from the center stack that is closest available
 		for playing the pay_off_card.
 		"""
 		po_value = Card.to_numeric_value(pay_off_card)
-		return min(map(lambda c: ComputerPlayer._distance_between_values(Card.to_numeric_value(c), po_value), center_stacks))
-#		distance = ComputerPlayer.MAX_VALUE
-#		closest_value = None
-#		for stack_id in range(len(center_stacks)):
-#			card = center_stacks[stack_id]
-#			new_dist = self._distance_between(Card.to_numeric_value(card), po_value)
-#			if new_dist < distance:
-#				distance = new_dist
-#				closest_value = stack_id
-#		return closest_value
+		return min(map(lambda v: ComputerPlayer._distance_between_values(v, po_value), center_values))
 
 
 	@staticmethod
@@ -338,6 +373,7 @@ class ComputerPlayer(Player):
 		Find the best path, and build the play queue for this path.
 		In the case of a tie, pick a random path
 		"""
+		log.info("Choosing from %d possible paths" % len(self.terminal_nodes))
 		node = max(self.terminal_nodes, key=lambda s: s.util_value)
 
 		chain = []
