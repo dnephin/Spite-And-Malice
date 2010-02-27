@@ -31,11 +31,6 @@ class StateNode(object):
 		" Override equality so that we can remove duplicate states. "
 		if other == None or type(other) != StateNode:
 			return False
-		if self.state == other.state:
-			log.warn("states equal")
-		if self.action == other.action:
-			log.warn("action %s equal %s " % (self.action, other.action))
-
 		if self.state == other.state and self.action == other.action:
 			return True
 		return False
@@ -44,7 +39,7 @@ class StateNode(object):
 		return not self.__eq__(other)
 
 	def __str__(self):
-		return "Node[%d](ps:%s|%s,%s,childs:%d)" % (
+		return "Node[%d](p:%s|%s,%s,childs:%d)" % (
 				self.util_value, self.player, self.action, self.state, len(self.child_nodes))
 
 
@@ -94,6 +89,7 @@ class ComputerPlayer(Player):
 			return
 
 		# evaluate all child nodes
+		log.info("Evaluating %d succcessor" % len(node.child_nodes))
 		for child_node in node.child_nodes:
 			self._evaluate(child_node)
 
@@ -101,52 +97,38 @@ class ComputerPlayer(Player):
 
 	def _terminal_test(self, node):
 		"""
-		Check if this node is the last one in its path that we can use
-		to considerg moves. Calls sucessors to populate the child
-		nodes of the node.
+		Check if this node is the last node in its path that can be evaluated. If
+		it is not calls sucessors to populate the child nodes of the node.
+		Returns True if this is a terminal node, False otherwise.
 		"""
-		# TODO: this is broken, returns true too often
-
 		# if nothing was done, can't be a terminal node
 		if not node.action:
+			node.child_nodes = self._successors(node)
 			return False
 
-		# if move is a pay_off, it's a terminal node
+		# if move is a pay_off for either player, it's a terminal node
 		if node.action.from_pile == PAY_OFF:
 			return True
 
-		# emptied hand without a discard
-		if len(node.state.get_player()[HAND]):
-			return True
+		# node is a play for SELF
+		if node.player == StateNode.SELF:
+			# we emptied hand without a discard
+			if not len(node.state.get_player()[HAND]) and node.action.to_pile != DISCARD:
+				return True
 
-		# opponent played a pay_off, doesnt matter what happens after this
-		if node.player == StateNode.OTHER and node.action.from_pile == PAY_OFF:
-			return True
-
-		# follow path and check if any CENTER moves were made 
-		discard_only = True
-		cur_node = node
-		while cur_node:
-			if cur_node.action and cur_node.action.to_pile != DISCARD:
-				discard_only = False
-				log.info("Found a center move in chain for %s" % (cur_node))
-				break
-			cur_node = cur_node.parent_node
-
-		# discard is only move
-		if node.action.to_pile == DISCARD and discard_only:
-			return True
+			# discard is only move
+			if node.action.to_pile == DISCARD and node.parent_node and not node.parent_node.action:
+				return True
 
 		# otherwise generate successors
 		node.child_nodes = self._successors(node)
-		log.info("Found %d succcessor" % len(node.child_nodes))	
 
 		# we've played center cards, so we want to see what the opponent can do
 		if node.action.to_pile == DISCARD and node.player == StateNode.SELF:
 			return False
 
-		# we can't determine any more moves for the other player
-		if node.player == StateNode.OTHER and not node.child_nodes:
+		# we can't determine any more moves for either player
+		if not node.child_nodes:
 			return True
 
 		return False
@@ -163,6 +145,7 @@ class ComputerPlayer(Player):
 
 			# moves to center
 			for pile_name, pile_len in [(HAND,1), (PAY_OFF,1), (DISCARD,4)]:
+				# TODO: skip extra piles of same length as one we've already evaled
 				for pile_id in range(pile_len):
 					for action in self._get_center_move_from(node.state, pile_name, pile_id):
 						new_state = ComputerPlayer._new_state_from_action(node.state, action)
@@ -177,6 +160,7 @@ class ComputerPlayer(Player):
 				# can't discard kings
 				if Card.to_numeric_value(card) == 13:
 					continue
+				# TODO: only consider one empty pile
 				for pile_id in range(len(node.state.get_player()[DISCARD])):
 					action = PlayerMove(card, from_pile=HAND, to_pile=DISCARD, to_id=pile_id)
 					new_state = ComputerPlayer._new_state_from_action(node.state, action)
@@ -324,8 +308,8 @@ class ComputerPlayer(Player):
 			if node.action.from_pile == PAY_OFF:
 				value -= points['op_pay_off']
 
-		# cummulative utils
-		log.info("Util %d from: (%s)" % (value, points.used))
+		# cumulative utils
+		log.debug("Util %d from: (%s)" % (value, points.used))
 		return value + node.parent_node.util_value
 
 
@@ -342,7 +326,7 @@ class ComputerPlayer(Player):
 				center_value, Card.to_numeric_value(c)), pile)
 
 		card = pile[list_values.index(max(list_values))]
-		log.info("Least essential card for center_values[%s] and pay_off[%s]: %s" % (
+		log.debug("Least essential card for center_values[%s] and pay_off[%s]: %s" % (
 			"".join(map(str, center_values)), pay_off_card, card))
 		return card
 
