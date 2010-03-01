@@ -240,22 +240,32 @@ class ComputerPlayer(Player):
 		""" 
 		Calculate the utility value for this state node.
 		"""
-
-		# TODO: discard values should be less then playing op_dist_po cards
-		# TODO: points for playing on empty discard stack
-		# TODO: organize values into sections (DISCARD, OTHER,  PAYOFF), base points for each
-		points = self.PointTracker({
-			'pay_off': 	400,	# Play pay_off card
-			'empty_hand': 120,	# Empty hand without a discard
-			'discard_same': 32,	# Discard on same value card
-			'discard_common': 10, # Each time the discard card occures in the hard
-			'op_dist_po': 4,	# Each point away the closest center is from opponents pay off (max +48)
-			'bury_least': 2,	# Discard buries the least essential card
-			'discard_least': 1,	# Discard least essential card
-			'card_in_discard': -1, # each card in discard
-			'hand_cards': -3,	# Each card in hand
-			'op_pay_off': -80,	# Opponent plays pay_off card
-		})
+		# TODO: remove on_empty, should be handled in other categories
+		# TODO: fix points, so less points for discard then center move
+		points = {
+			# to discard pile
+			DISCARD: (0, {
+				'on_empty': 50,			# Discard on empty pile
+				'on_same': 35,			# Discard on same value card
+				'common_in_hand': 10,	# Each time the discard card occures in the hard
+				'least_essential': 1,	# Discard least essential card
+				'bury_least': 5,		# Discard buries the least essential card
+			}),
+			# to center
+			CENTER: (30, {
+				'op_dist_po': 5,		# Each point away the closest center is from opponents pay off (max +48)
+				'pay_off': 400,			# Play the pay off card
+			}),
+			# from hand
+			HAND: (20, {
+				'empty_hand': 120,		# Empty hand without a discard
+			}),
+			# Opponent play
+			StateNode.OTHER: (0, {
+				'from_discard': -20,	# Opponent plays from discard
+				'from_pay_off': -300,	# Opponent plays pay_off card
+			})
+		}
 
 		# shortcut vars
 		center_values = []
@@ -270,56 +280,73 @@ class ComputerPlayer(Player):
 
 		value = 0
 		if node.player == StateNode.SELF:
-			# pay off played
-			if node.action.from_pile == PAY_OFF:
-				value += points['pay_off']
-			# empty hand without a discard
-			if len(myself[HAND]) == 0 and node.action.to_pile != DISCARD:
-				value += points['empty_hand']
-			# each time the discard cards value ocurs in the hand
 			if node.action.to_pile == DISCARD:
-				value += points['discard_common'] * map(lambda c: Card.to_numeric_value(c), myself[HAND]).count(
+				value += points[DISCARD][0]
+				# discard on empty pile
+				if len(myself[DISCARD][node.action.to_id]) == 1:
+					value += points[DISCARD][1]['on_empty']
+				# discard on same value card
+				if len(myself[DISCARD][node.action.to_id]) > 1 \
+						and Card.to_numeric_value(myself[DISCARD][node.action.to_id][-1]) == \
+						Card.to_numeric_value(myself[DISCARD][node.action.to_id][-2]):
+					value += points[DISCARD][1]['on_same']
+				# each time the discard cards value ocurs in the hand
+				value += points[DISCARD][1]['common_in_hand'] * \
+						map(lambda c: Card.to_numeric_value(c), myself[HAND]).count(
 						Card.to_numeric_value(node.action.card))
-			# discard on same value card
-			if node.action.to_pile == DISCARD and len(myself[DISCARD][node.action.to_id]) > 1 \
-					and Card.to_numeric_value(myself[DISCARD][node.action.to_id][-1]) == \
-					Card.to_numeric_value(myself[DISCARD][node.action.to_id][-2]):
-				value += points['discard_same']
-			# discad buries least essential card
-			if node.action.to_pile == DISCARD and len(myself[DISCARD][node.action.to_id]) >= 1:
-				discard_piles = []
-				for pile_id in range(len(myself[DISCARD])):
-					pile = myself[DISCARD][pile_id]
-					if len(pile) > 1 and node.action.to_id:
-						discard_piles.append(pile[-2])
-					elif len(pile) > 1:
-						discard_piles.append(pile[-1])
-					else:
-						discard_piles.append(None)
-				if node.action.to_id == self._find_least_essential_card(center_values,
-						discard_piles, myself[PAY_OFF][-1]):
-					# TODO: broken ? always discards on 0
-					value += points['bury_least']
-			# discard least essential card
-			if node.action.to_pile == DISCARD and 0 == self._find_least_essential_card(
-					center_values, [node.action.card] + myself[HAND], myself[PAY_OFF][-1]):
-				value += points['discard_least']
-			# each point away the closest center is from opponents pay off
-			value += points['op_dist_po'] * self._distance_between_values(self._find_closest_center_stack_value(
-					center_values, other[PAY_OFF][-1]), Card.to_numeric_value(other[PAY_OFF][-1]))
-			# each card in hand
-			value += points['hand_cards'] * len(myself[HAND])
-			# each card in discard
-			value += points['card_in_discard'] * sum(map(lambda p: len(p), myself[DISCARD]))
+				# discard least essential card
+				if 0 == self._find_least_essential_card(
+						center_values, [node.action.card] + myself[HAND], myself[PAY_OFF][-1]):
+					value += points[DISCARD][1]['least_essential']
+				# discard buries least essential card
+				if len(myself[DISCARD][node.action.to_id]) >= 1:
+					discard_piles = self._build_pre_play_discard_piles(node)
+					if node.action.to_id == self._find_least_essential_card(center_values,
+							discard_piles, myself[PAY_OFF][-1]):
+						# TODO: broken ? always discards on 0
+						value += points[DISCARD][1]['bury_least']
+			elif node.action.to_pile == CENTER:
+				value += points[CENTER][0]
+				# each point away the closest center is from opponents pay off
+				value += points[CENTER][1]['op_dist_po'] * self._distance_between_values(self._find_closest_center_stack_value(
+						center_values, other[PAY_OFF][-1]), Card.to_numeric_value(other[PAY_OFF][-1]))
+				# pay off played
+				if node.action.from_pile == PAY_OFF:
+					value += points[CENTER][1]['pay_off']
 
+			if node.action.from_pile == HAND:
+				value += points[HAND][0]
+				# empty hand without a discard
+				if len(myself[HAND]) == 0 and node.action.to_pile != DISCARD:
+					value += points[HAND][1]['empty_hand']
+
+		# opponents plays
 		else:
-			# opponent plays pay_off
+			value += points[StateNode.OTHER][0]
 			if node.action.from_pile == PAY_OFF:
-				value -= points['op_pay_off']
+				value += points[StateNode.OTHER][1]['from_pay_off']
+			if node.action.from_pile == DISCARD:
+				value += points[StateNode.OTHER][1]['from_discard']
 
 		# cumulative utils
-		log.debug("Util %d from: (%s)" % (value, points.used))
+		log.debug("Util %d " % (value))
 		return value + node.parent_node.util_value
+
+
+	@staticmethod
+	def _build_pre_play_discard_piles(node):
+		" build a list of the pre play discard piles top cards "
+		discard = node.state.get_player()[DISCARD]
+		discard_piles = []
+		for pile_id in range(len(discard)):
+			pile = discard[pile_id]
+			if len(pile) > 1 and node.action.to_id:
+				discard_piles.append(pile[-2])
+			elif len(pile) > 1:
+				discard_piles.append(pile[-1])
+			else:
+				discard_piles.append(None)
+		return discard_piles
 
 
 	@staticmethod
