@@ -19,13 +19,13 @@ class StateNode(object):
 	SELF = "self"
 	OTHER = "other"
 
-	def __init__(self, state, action=None, parent_node=None):
+	def __init__(self, state, action=None, parent_node=None, player="self"):
 		self.state = state
 		self.action = action
 		self.parent_node = parent_node
 		self.child_nodes = []
 		self.util_value = 0
-		self.player = self.SELF
+		self.player = player
 
 	def __eq__(self, other):
 		" Override equality so that we can remove duplicate states. "
@@ -89,10 +89,9 @@ class ComputerPlayer(Player):
 			return
 
 		# evaluate all child nodes
-		log.info("Evaluating %d succcessor" % len(node.child_nodes))
+		log.debug("Evaluating %d succcessor" % len(node.child_nodes))
 		for child_node in node.child_nodes:
 			self._evaluate(child_node)
-
 
 
 	def _terminal_test(self, node):
@@ -140,48 +139,50 @@ class ComputerPlayer(Player):
 		"""
 		log.debug("Generating successors for %s" % node)
 		node_list = []
-		# moves for the computer player as long as we didn't discard
-		if node.player == StateNode.SELF and (not(node.action) or node.action.from_pile != DISCARD):
 
-			# moves to center
-			for pile_name, pile_len in [(HAND,1), (PAY_OFF,1), (DISCARD,4)]:
-				# TODO: skip extra piles of same length as one we've already evaled
+		# opponent plays card on center
+		if node.player == StateNode.OTHER or (node.action and node.action.to_pile == DISCARD):
+			swap_player = (node.player == StateNode.SELF)
+			for pile_name, pile_len in [(PAY_OFF,1), (DISCARD,4)]:
 				for pile_id in range(pile_len):
-					for action in self._get_center_move_from(node.state, pile_name, pile_id):
-						new_state = ComputerPlayer._new_state_from_action(node.state, action)
-						new_node = StateNode(new_state, action, node)
-						if new_node not in node_list:
-							node_list.append(new_node)
-						else:
-							log.warn('skip duplicate state %s' % new_node)
+					for action in self._get_center_move_from(node.state, pile_name, pile_id, swap_player):
+						new_state = ComputerPlayer._new_state_from_action(node.state, action, swap_player)
+						new_node = StateNode(new_state, action, node, player=StateNode.OTHER)
+						node_list.append(new_node)
+			return node_list
 
-			# moves to discard
-			for card in node.state.get_player()[HAND]:
-				# can't discard kings
-				if Card.to_numeric_value(card) == 13:
-					continue
-				# TODO: only consider one empty pile
-				for pile_id in range(len(node.state.get_player()[DISCARD])):
-					action = PlayerMove(card, from_pile=HAND, to_pile=DISCARD, to_id=pile_id)
+		# moves to center
+		for pile_name, pile_len in [(HAND,1), (PAY_OFF,1), (DISCARD,4)]:
+			for pile_id in range(pile_len):
+				for action in self._get_center_move_from(node.state, pile_name, pile_id):
 					new_state = ComputerPlayer._new_state_from_action(node.state, action)
 					new_node = StateNode(new_state, action, node)
-					if new_node not in node_list:
-						node_list.append(new_node)
-					else:
-						log.warn('skip duplicate state %s' % new_node)
-			return node_list
-	
-		# opponent plays card on center
-		for pile_name, pile_len in [(PAY_OFF,1), (DISCARD,4)]:
-			for pile_id in range(pile_len):
-				for action in self._get_center_move_from(node.state, pile_name, pile_id, True):
-					new_state = ComputerPlayer._new_state_from_action(node.state, action, True)
-					new_node = StateNode(new_state, action, node)
-					if new_node not in node_list:
-						node_list.append(new_node)
-					else:
-						log.warn('skip duplicate state %s' % new_node)
+					node_list.append(new_node)
+
+		# moves to discard
+		for card in node.state.get_player()[HAND]:
+			# can't discard kings
+			if Card.to_numeric_value(card) == 13:
+				continue
+			# only create moves for different discard pile states
+			discard_pile_values = []
+			discard_pile_ids = []
+			for i in range(len(node.state.get_player()[DISCARD])):
+				value = None
+				if len(node.state.get_player()[DISCARD][i]):
+					value = Card.to_numeric_value(node.state.get_player()[DISCARD][i][-1])
+				if value not in discard_pile_values:
+					discard_pile_values.append(value)
+					discard_pile_ids.append(i)
+			# find the moves
+			for pile_id in discard_pile_ids: 
+				action = PlayerMove(card, from_pile=HAND, to_pile=DISCARD, to_id=pile_id)
+				new_state = ComputerPlayer._new_state_from_action(node.state, action)
+				new_node = StateNode(new_state, action, node)
+				node_list.append(new_node)
 		return node_list
+	
+
 
 	@staticmethod
 	def _get_center_move_from(state, pile_name, pile_index, other_player=False):
@@ -195,10 +196,18 @@ class ComputerPlayer(Player):
 			if len(state.get_player(other_player)[pile_name][pile_index]) < 1:
 				return moves
 			pile = [state.get_player(other_player)[pile_name][pile_index][-1]]
-
+		# only include center piles of different lengths
+		center_lengths = []
+		center_ids = []
+		for i in range(len(state.center_stacks)):
+			length = len(state.center_stacks[i])
+			if length not in center_lengths:
+				center_ids.append(i)
+				center_lengths.append(length)
+		# find the moves
 		for i in range(len(pile)):
 			card = pile[i]
-			for center_id in range(len(state.center_stacks)):
+			for center_id in center_ids:
 				if state.can_place_card_in_center(state.center_stacks[center_id], card):
 					moves.append(PlayerMove(card, from_pile=pile_name, from_id=pile_index,
 							to_pile=CENTER, to_id=center_id))
@@ -373,7 +382,7 @@ class ComputerPlayer(Player):
 		# remove the starting state, and reverse the list, so we can traverse the path
 		chain.pop()
 		chain.reverse()
-		log.info("Chosing path: %s" % (" ".join(map(str, chain))))
+		log.info("Chosing path: %s" % (" ".join(map(unicode, chain))))
 		self.play_queue = chain
 
 

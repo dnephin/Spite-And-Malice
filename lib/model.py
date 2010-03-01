@@ -53,7 +53,7 @@ class PlayerMove(object):
 			from_id = ''
 		if self.to_id == None:
 			to_id = ''
-		return "Move(%s %s[%s] -> %s %s" % (self.from_pile, from_id, self.card,
+		return "Move(%s %s[%s] -> %s %s)" % (self.from_pile, from_id, self.card,
 				self.to_pile, to_id)
 
 	def __eq__(self, other):
@@ -226,15 +226,18 @@ class GameState(SpiteAndMaliceModel):
 
 		# copy of the visible cards for player
 		a_id = self.active_player
-		self.players[a_id][HAND] = deepcopy(game.players[a_id][HAND])
-		self.players[a_id][PAY_OFF] = [game.players[a_id][PAY_OFF].visible()[-1]]
-		self.players[a_id][DISCARD] = deepcopy(game.players[a_id][DISCARD])
-
+		self.players[a_id] = {
+			HAND: deepcopy(game.players[a_id][HAND]),
+			PAY_OFF: [game.players[a_id][PAY_OFF].visible()[-1]],
+			DISCARD: deepcopy(game.players[a_id][DISCARD]),
+		}
 		# copy of visible cards of his opponent
 		o_id = int(not a_id)
-		self.players[o_id][PAY_OFF] = [game.players[o_id][PAY_OFF].visible()[-1]]
-		self.players[o_id][DISCARD] = deepcopy(game.players[o_id][DISCARD])
-
+		self.players[o_id] = {
+			PAY_OFF: [game.players[o_id][PAY_OFF].visible()[-1]],
+			DISCARD: deepcopy(game.players[o_id][DISCARD]),
+			HAND: []
+		}
 		# center stacks
 		self.center_stacks = deepcopy(game.center_stacks)
 
