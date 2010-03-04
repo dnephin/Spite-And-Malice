@@ -45,6 +45,7 @@ class HumanPlayer(Player):
 						to_location = target_group.getSelected()[1]
 						return PlayerMove(card.model, from_location, to_location)
 
+				# TODO: clear selection 
 				# mouseclick to select card
 				if event.type == MOUSEBUTTONUP:
 					if select_group.findClick(event):

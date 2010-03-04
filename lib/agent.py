@@ -240,20 +240,19 @@ class ComputerPlayer(Player):
 		""" 
 		Calculate the utility value for this state node.
 		"""
-		# TODO: remove on_empty, should be handled in other categories
-		# TODO: fix points, so less points for discard then center move
+		# FIXME: Balance points so that placing on center only when necesarry (discard full, or no closer to po for op)
 		points = {
 			# to discard pile
 			DISCARD: (0, {
-				'on_empty': 50,			# Discard on empty pile
-				'on_same': 35,			# Discard on same value card
+				'on_empty': 35,			# Discard on empty pile
+				'on_same': 50,			# Discard on same value card
 				'common_in_hand': 10,	# Each time the discard card occures in the hard
-				'least_essential': 1,	# Discard least essential card
+				'least_essential': 5,	# Discard least essential card
 				'bury_least': 5,		# Discard buries the least essential card
 			}),
 			# to center
 			CENTER: (30, {
-				'op_dist_po': 5,		# Each point away the closest center is from opponents pay off (max +48)
+				'op_dist_po': 10,		# Each point away the closest center is from opponents pay off (max +48)
 				'pay_off': 400,			# Play the pay off card
 			}),
 			# from hand
@@ -303,7 +302,6 @@ class ComputerPlayer(Player):
 					discard_piles = self._build_pre_play_discard_piles(node)
 					if node.action.to_id == self._find_least_essential_card(center_values,
 							discard_piles, myself[PAY_OFF][-1]):
-						# TODO: broken ? always discards on 0
 						value += points[DISCARD][1]['bury_least']
 			elif node.action.to_pile == CENTER:
 				value += points[CENTER][0]
