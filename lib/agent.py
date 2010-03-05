@@ -43,6 +43,14 @@ class StateNode(object):
 				self.util_value, self.player, self.action, self.state, len(self.child_nodes))
 
 
+#TODO: change this so that non terminal moves can be considered. For example if the computer can play
+# an ace, then a two. And there is just 1 ace on the center.  The computer should be able to 
+#  play the ace.  Currently, it would attempt to play the two, and not take that patch, due to
+# advancing the other player.  It should attempt opponent moves after each self move, as well as
+# attempt each additional self move, and add all of these as potential paths
+
+# TODO: allow the ComputerPlayer to play cards that it can see from the other player.  If the opponent
+# has a 3 at the top of its discard, a 3 should be played to block his ability to play it
 class ComputerPlayer(Player):
 	"""
 	An AI player for Spite and Malice. This uses a modified version of minimax that
@@ -240,29 +248,33 @@ class ComputerPlayer(Player):
 		""" 
 		Calculate the utility value for this state node.
 		"""
+		ALL = 'all'
 		# FIXME: Balance points so that placing on center only when necesarry (discard full, or no closer to po for op)
 		points = {
 			# to discard pile
-			DISCARD: (0, {
-				'on_empty': 35,			# Discard on empty pile
+			DISCARD: (10, {
 				'on_same': 50,			# Discard on same value card
+				'on_empty': 30,			# Discard on empty pile
 				'common_in_hand': 10,	# Each time the discard card occures in the hard
 				'least_essential': 5,	# Discard least essential card
-				'bury_least': 5,		# Discard buries the least essential card
+				'bury_least': 2,		# Discard buries the least essential card
 			}),
 			# to center
-			CENTER: (30, {
-				'op_dist_po': 10,		# Each point away the closest center is from opponents pay off (max +48)
-				'pay_off': 400,			# Play the pay off card
+			CENTER: (0, {
+				'pay_off': 1000,		# Play the pay off card
 			}),
 			# from hand
-			HAND: (20, {
+			HAND: (0, {
 				'empty_hand': 120,		# Empty hand without a discard
 			}),
+			# All moves
+			ALL: {
+				'op_dist_po': 30,		# Each point away the closest center is from opponents pay off (max *12)
+			},
 			# Opponent play
 			StateNode.OTHER: (0, {
-				'from_discard': -20,	# Opponent plays from discard
-				'from_pay_off': -300,	# Opponent plays pay_off card
+				'from_discard': -10,	# Opponent plays from discard
+				'from_pay_off': -1000,	# Opponent plays pay_off card
 			})
 		}
 
@@ -277,8 +289,14 @@ class ComputerPlayer(Player):
 			myself = node.state.get_player(True)
 			other = node.state.get_player()
 
+
 		value = 0
+		# each point away the closest center is from opponents pay off
+		if len(other[PAY_OFF]):
+			value += points[ALL]['op_dist_po'] * \
+					self._find_min_center_distance(center_values, other[PAY_OFF][-1])
 		if node.player == StateNode.SELF:
+
 			if node.action.to_pile == DISCARD:
 				value += points[DISCARD][0]
 				# discard on empty pile
@@ -303,11 +321,9 @@ class ComputerPlayer(Player):
 					if node.action.to_id == self._find_least_essential_card(center_values,
 							discard_piles, myself[PAY_OFF][-1]):
 						value += points[DISCARD][1]['bury_least']
+
 			elif node.action.to_pile == CENTER:
 				value += points[CENTER][0]
-				# each point away the closest center is from opponents pay off
-				value += points[CENTER][1]['op_dist_po'] * self._distance_between_values(self._find_closest_center_stack_value(
-						center_values, other[PAY_OFF][-1]), Card.to_numeric_value(other[PAY_OFF][-1]))
 				# pay off played
 				if node.action.from_pile == PAY_OFF:
 					value += points[CENTER][1]['pay_off']
@@ -350,41 +366,79 @@ class ComputerPlayer(Player):
 	@staticmethod
 	def _find_least_essential_card(center_values, pile, pay_off_card):
 		"""
-		Return the id in pile that is considered least essential relative to the
+		Return the index in pile that is considered least essential relative to the
 		pay off card.
 		"""
-		# TODO: broken, returns cards below value, should return highest outside range from center -> payoff,
-		# for at least the case of discards, maybe this is used correctly elsewhere ?
-		center_value = ComputerPlayer._find_closest_center_stack_value(center_values, pay_off_card)
-		list_values = map(lambda c: ComputerPlayer._distance_between_values(
-				center_value, Card.to_numeric_value(c)), pile)
+		min_score = ComputerPlayer.MAX_VALUE
+		min_card = None
 
-		card = pile[list_values.index(max(list_values))]
+		# arrange the center piles by furthest to closest card
+		value_to_center_distance = {}
+		for i in range(len(center_values)):
+			dist = ComputerPlayer._distance_between_values(center_values[i], pay_off_card)
+			value_to_center_distance[center_values[i]] = dist
+		center_values.sort(cmp=lambda a, b: value_to_center_distance[b] - value_to_center_distance[a])
+
+		# find the lowest score for cards in the pile
+		for i in range(len(pile)):
+			score = 0
+			card = pile[i]
+			# calculate the score for each center pile
+			for center_id in range(len(center_values)):
+				if ComputerPlayer._is_card_between_values(card, center_values[center_id], pay_off_card):
+					score += 2**center_id
+
+			# store the minimum
+			if score < min_score:
+				min_score = score
+				min_card = card
+
 		log.debug("Least essential card for center_values[%s] and pay_off[%s]: %s" % (
-			"".join(map(str, center_values)), pay_off_card, card))
-		return card
+			"".join(map(str, center_values)), pay_off_card, min_card))
+		return pile.index(min_card)
 
 
 	@staticmethod
-	def _find_closest_center_stack_value(center_values,  pay_off_card):
+	def _find_min_center_distance(center_values,  pay_off_card):
 		"""
 		return the value from the center stack that is closest available
 		for playing the pay_off_card.
 		"""
-		po_value = Card.to_numeric_value(pay_off_card)
-		return min(map(lambda v: ComputerPlayer._distance_between_values(v, po_value), center_values))
+		return min(map(lambda v: ComputerPlayer._distance_between_values(v, pay_off_card), center_values))
 
 
 	@staticmethod
 	def _distance_between_values(pile_card, play_card):
 		" find the distance between the pile card, and the play card values"
+		# make sure we have numeric values
+		if type(pile_card) in [str, unicode]:
+			pile_card = Card.to_numeric_value(pile_card)
+		if type(play_card) in [str, unicode]:
+			play_card = Card.to_numeric_value(play_card)
+
 		if pile_card == None:
 			return play_card
 		if play_card > pile_card:
 			return play_card - pile_card
 		if play_card == pile_card:
-			return 12
-		return 12 - pile_card + play_card
+			return 11
+		return 11 - pile_card + play_card
+
+
+	@staticmethod
+	def _is_card_between_values(card, center_card, pay_off):
+		" returns 1 if cards value is between center_card and pay_off card, 0 otherwise "
+		# get the value of the card if we have a string of the card
+		if type(card) in [str, unicode]:
+			card = Card.to_numeric_value(card)
+		if type(center_card) in [str, unicode]:
+			center_card = Card.to_numeric_value(center_card)
+		if type(pay_off) in [str, unicode]:
+			pay_off = Card.to_numeric_value(pay_off)
+		# if center is above pay_off, move center
+		if center_card > pay_off:
+			center_card -= 11
+		return (center_card < card < pay_off)
 
 	def _build_play_queue(self):
 		"""
