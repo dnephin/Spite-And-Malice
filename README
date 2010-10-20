@@ -1,9 +1,10 @@
 Spite and Malice
 
+Spite and Malice is a two person solitaire game. This program supports single player verses a computer, and two human players on the same machine. Support for a remote player via tcp/ip is planned. The computer should play a reasonably strong game.
+
 
 __Requirements__
 pygame 1.8.1 (or later)
-cardmodels (from dnlib)
 
 __Credit__
 Card view models (modified) from DeckOfCards on pygame by John Eriksson (wmjoers)

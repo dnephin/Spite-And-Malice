@@ -48,6 +48,8 @@ class StateNode(object):
 #  play the ace.  Currently, it would attempt to play the two, and not take that patch, due to
 # advancing the other player.  It should attempt opponent moves after each self move, as well as
 # attempt each additional self move, and add all of these as potential paths
+# To do this: split the successors for nodes, into two methods, and execute both for each node, This 
+# will probably require some small change to the terminal test
 
 # TODO: allow the ComputerPlayer to play cards that it can see from the other player.  If the opponent
 # has a 3 at the top of its discard, a 3 should be played to block his ability to play it

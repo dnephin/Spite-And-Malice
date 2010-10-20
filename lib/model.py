@@ -49,7 +49,7 @@ class PlayerMove(object):
 		" String representation of this dto "
 		from_id = self.from_id
 		to_id = self.to_id
-		if self.from_id == None:
+		if self.from_id == None or self.from_pile in [HAND, PAY_OFF]:
 			from_id = ''
 		if self.to_id == None:
 			to_id = ''
